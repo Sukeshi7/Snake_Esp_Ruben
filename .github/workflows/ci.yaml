@@ -3,11 +3,11 @@ name: Compile Snake ESP32
 on:
     push:
         paths:
-            - "*.ino"
+            - "snake/**"
             - ".github/workflows/ci.yaml"
     pull_request:
         paths:
-            - "*.ino"
+            - "snake/**"
             - ".github/workflows/ci.yaml"
 
 jobs:
