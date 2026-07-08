@@ -1,0 +1,40 @@
+name: Compile Snake ESP32
+
+on:
+  push:
+    paths:
+      - "snake_esp32/**"
+      - ".github/workflows/build.yml"
+  pull_request:
+    paths:
+      - "snake_esp32/**"
+      - ".github/workflows/build.yml"
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Installer le core ESP32
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Installer les bibliothèques nécessaires
+        run: |
+          arduino-cli lib install "Adafruit GFX Library"
+          arduino-cli lib install "Adafruit SSD1306"
+          arduino-cli lib install "WebSockets"
+
+      - name: Compiler le sketch (carte ESP32-S3)
+        run: |
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32s3 \
+            snake_esp32
