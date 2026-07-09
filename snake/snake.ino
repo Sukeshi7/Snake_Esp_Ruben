@@ -45,6 +45,11 @@ unsigned long tickInterval = 150;
 int score;
 int best = 0;
 
+int difficulty;
+
+enum GameState { menu, playing, gameover };
+GameState state = menu;
+
 volatile char pendingKey = 0;
 
 const char html[] PROGMEM = R"rawliteral(
@@ -65,16 +70,42 @@ const char html[] PROGMEM = R"rawliteral(
 
   let lastKey = null;
   document.addEventListener('keydown', (e) => {
-    const k = e.key.toLowerCase();
-    if (['z', 'q', 's', 'd'].includes(k) && k !== lastKey) {
-      ws.send(k);
-      lastKey = k;
-    }
-  });
+  const accepted = {
+    KeyZ: 'z',
+    KeyW: 'w',
+    KeyQ: 'q',
+    KeyA: 'a',
+    KeyS: 's',
+    KeyD: 'd',
+    KeyR: 'r',
+    Numpad1: '1',
+    Numpad2: '2',
+  };
+
+  const k = accepted[e.code];
+
+  if (k && k !== lastKey) {
+    ws.send(k);
+    lastKey = k;
+  }
+});
   document.addEventListener('keyup', (e) => {
-    const k = e.key.toLowerCase();
-    if (k === lastKey) lastKey = null;
-  });
+  const accepted = {
+    KeyZ: 'z',
+    KeyW: 'w',
+    KeyQ: 'q',
+    KeyA: 'a',
+    KeyS: 's',
+    KeyD: 'd',
+    KeyR: 'r',
+    Numpad1: '1',
+    Numpad2: '2',
+  };
+
+  if (accepted[e.code] === lastKey) {
+    lastKey = null;
+  }
+});
 </script>
 </body>
 </html>
@@ -116,10 +147,14 @@ void setup() {
   webSocket.onEvent(webSocketEvent);
 
   randomSeed(esp_random());
-  resetGame();
+
+  startScreen();
+  state = menu;
+  //resetGame();
 }
 
-void resetGame() {
+void resetGame(int difficulty) {
+
   snakeLength = 3;
   int cx = grid_w / 2;
   int cy = grid_h / 2;
@@ -156,13 +191,11 @@ void readInput() {
   char c = pendingKey;
   pendingKey = 0;
 
-  if (gameOver) {
-    resetGame();
-    return;
-  }
-
   switch (c) {
     case 'z':
+      if (dir != down) nextDir = up;
+      break;
+    case 'w':
       if (dir != down) nextDir = up;
       break;
     case 's':
@@ -171,13 +204,30 @@ void readInput() {
     case 'q':
       if (dir != right) nextDir = left;
       break;
+    case 'a':
+      if (dir != right) nextDir = left;
+      break;
     case 'd':
       if (dir != left) nextDir = right;
+      break;
+    case 'r':
+      startScreen();
+      state = menu;
+      break;
+    case '1':
+      difficulty = 1;
+      resetGame(1);
+      state = playing;
+      break;
+    case '2':
+      difficulty = 2;
+      resetGame(2);
+      state = playing;
       break;
   }
 }
 
-void updateGame() {
+void updateGame(int difficulty) {
   dir = nextDir;
 
   Point newHead = snake[0];
@@ -188,11 +238,26 @@ void updateGame() {
     case right: newHead.x++; break;
   }
 
-  if (newHead.x < 0 || newHead.x >= grid_w || newHead.y < 0 || newHead.y >= grid_h) {
+  /*if (difficulty == 2) {
+    if (newHead.x < 0 || newHead.x >= grid_w || newHead.y < 0 || newHead.y >= grid_h) {
     gameOver = true;
     return;
-  }
+    }
+  } */
 
+  if (newHead.x < 0 || newHead.x >= grid_w || newHead.y < 0 || newHead.y >= grid_h) {
+  if (difficulty == 2) {
+    gameOver = true;
+    return;
+  } else {
+    if (newHead.x < 0) newHead.x = grid_w - 1;
+    else if (newHead.x >= grid_w) newHead.x = 0;
+
+    if (newHead.y < 0) newHead.y = grid_h - 1;
+    else if (newHead.y >= grid_h) newHead.y = 0;
+  }
+}
+  
   for (int i = 0; i < snakeLength; i++) {
     if (snake[i].x == newHead.x && snake[i].y == newHead.y) {
       gameOver = true;
@@ -209,11 +274,13 @@ void updateGame() {
   snake[0] = newHead;
 
   if (ateFood) {
-    snakeLength++;
-    score++;
-    if (tickInterval > 60) tickInterval -= 3;
-    spawnFood();
-  }
+  snakeLength++;
+  score++;
+  Serial.print("Score: ");
+  Serial.println(score);
+  if (tickInterval > 60) tickInterval -= 3;
+  spawnFood();
+}
 }
 
 void drawGame() {
@@ -235,27 +302,52 @@ void drawGameOver() {
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
 
-  display.setCursor(12, 0);
+  display.setCursor(13, 0);
   display.println("Game Over");
 
   display.setTextSize(1);
 
-  display.setCursor(40, 25);
+  display.setCursor(40, 20);
   display.print("Score: ");
-  display.setCursor(80, 25);
+  display.setCursor(80, 20);
   display.println(score);
 
   if (score > best) {
     best = score;
   }
 
-  display.setCursor(40, 35);
+  display.setCursor(40, 30);
   display.print("Best: ");
-  display.setCursor(80, 35);
+  display.setCursor(80, 30);
   display.println(best);
 
-  display.setCursor(17, 50);
-  display.println("Restart with zqsd");
+  display.setCursor(10, 40);
+  display.println("Restart with 1 or 2");
+
+    display.setCursor(15, 50);
+  display.println("Press r for menu");
+
+  display.display();
+}
+
+void startScreen() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.drawRect(0, 0, width, height, SSD1306_WHITE);
+
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(35, 2);
+  display.println("SNAKE");
+
+  display.setTextSize(1);
+  display.setCursor(10, 20);
+  display.println("Choose difficulty:");
+  display.setCursor(20, 35);
+  display.println("1. Easy (no walls)");
+  display.setCursor(20, 45);
+  display.println("2. Medium");
 
   display.display();
 }
@@ -263,18 +355,30 @@ void drawGameOver() {
 void loop() {
   server.handleClient();
   webSocket.loop();
+
   readInput();
 
-  if (gameOver) {
-    drawGameOver();
-    delay(50);
-    return;
-  }
+  switch (state) {
+    case menu:
+      break;
+    case playing: {
+      if (gameOver) {
+        drawGameOver();
+        delay(50);
+        return;
+      }
 
-  unsigned long now = millis();
-  if (now - lastTick >= tickInterval) {
-    lastTick = now;
-    updateGame();
-    drawGame();
+      unsigned long now = millis();
+      if (now - lastTick >= tickInterval) {
+        lastTick = now;
+        updateGame(difficulty);
+        drawGame();
+      }
+      break;
+    }
+    case gameover: {
+      delay(50);
+      break;
+    }
   }
 }
